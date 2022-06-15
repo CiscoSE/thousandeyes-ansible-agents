@@ -1,0 +1,6 @@
+# NOTE: It is extremily insecure to push credentials to a git repo in plain text 
+# You should have this information in env variables, encrypted using something like ansible-vault or, even better, using 
+# a secret manager such as vault
+te_account_token: an_acount_token
+te_username: your_username
+te_password: your_password

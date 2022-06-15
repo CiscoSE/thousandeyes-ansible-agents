@@ -1,0 +1,62 @@
+- name: Setup agent configs
+  hosts: agent_servers
+  gather_facts: true
+  become: true
+  tasks:
+
+    - name: Download seccomp and apparmor config script
+      get_url:
+        url: https://downloads.thousandeyes.com/bbot/configure_docker.sh
+        mode: 0551
+        dest: /tmp/configure_docker.sh
+
+    - name: Configure seccomp and apparmor
+      command: bash /tmp/configure_docker.sh
+      register: docker_config_result
+
+    - name: Print docker config results
+      debug:
+        msg: "{{ docker_config_result.stdout }}"
+
+    - name: Install docker python
+      pip: 
+        name: docker
+        
+    - name: Create agent container
+      docker_container:
+        name: "{{ ansible_facts.hostname }}-clus-1302-docker"
+        hostname: "{{ ansible_facts.hostname }}-clus-1302-docker"
+        image: thousandeyes/enterprise-agent
+        command: /sbin/my_init
+        state: started
+        memory: 2g
+        memory_swap: 2g
+        tty: yes
+        shm_size: 512M
+        env: 
+          TEAGENT_ACCOUNT_TOKEN: "{{ te_account_token }}"
+          TEAGENT_INET: "4"
+        volumes:
+          - /var/thousandeyes/dcloud-agent/te-agent:/var/lib/te-agent
+          - /var/thousandeyes/dcloud-agent/te-browserbot:/var/lib/te-browserbot
+          - /var/thousandeyes/dcloud-agent/log/:/var/log/agent
+        capabilities: 
+          - NET_ADMIN
+          - SYS_ADMIN
+        restart_policy: unless-stopped
+        security_opts:
+          - apparmor:docker_sandbox
+          - seccomp:{{ lookup('file','files/te-seccomp.json') }}
+      
+    - name: Validate that the agent has registered to the cloud
+      uri:
+        url: https://api.thousandeyes.com/v6/agents.json?agentTypes=ENTERPRISE
+        user: "{{ te_username }}"
+        password: "{{ te_password }}"
+        method: GET
+        status_code: 200
+      register: result
+      until: "result is search(ansible_facts.hostname + '-clus-1302-docker')"
+      retries: 5
+      delay: 2
+      no_log: true
